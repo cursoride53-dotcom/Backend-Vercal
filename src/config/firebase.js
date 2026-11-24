@@ -1,64 +1,87 @@
-// ============================================================
-// src/config/firebase.js
-// HRMS ZERMII - FIREBASE ADMIN CONFIGURATION
-// ============================================================
 
 "use strict";
 
+// ============================================================
+// HRMS ZERMII - FIREBASE ADMIN CONFIGURATION
+// ============================================================
+
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 
 // ============================================================
 // READ ENVIRONMENT VARIABLES
 // ============================================================
 
-const projectId = process.env.FIREBASE_PROJECT_ID;
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+const projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
 
-// ============================================================
-// DEBUG CHECK
-// ============================================================
-
-console.log("========================================");
-console.log("FIREBASE ENV CHECK");
-console.log("========================================");
-console.log("PROJECT ID:", projectId ? "LOADED" : "MISSING");
-console.log("CLIENT EMAIL:", clientEmail ? "LOADED" : "MISSING");
-console.log("PRIVATE KEY:", privateKey ? "LOADED" : "MISSING");
-console.log("========================================");
+let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
 // ============================================================
 // VALIDATE ENVIRONMENT VARIABLES
 // ============================================================
 
+console.log("========================================");
+console.log("FIREBASE ENV CHECK");
+console.log("========================================");
+
+console.log("PROJECT ID:", projectId ? "LOADED" : "MISSING");
+console.log("CLIENT EMAIL:", clientEmail ? "LOADED" : "MISSING");
+console.log("PRIVATE KEY:", privateKey ? "LOADED" : "MISSING");
+
+console.log("========================================");
+
 if (!projectId || !clientEmail || !privateKey) {
   throw new Error(
-    "Firebase configuration is missing. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env"
+    "Firebase configuration missing. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY."
   );
 }
 
 // ============================================================
-// FORMAT PRIVATE KEY
+// FORMAT FIREBASE PRIVATE KEY
 // ============================================================
 
-const formattedPrivateKey = privateKey
+// Remove accidental surrounding quotation marks
+privateKey = privateKey.trim();
+
+if (
+  (privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+  (privateKey.startsWith("'") && privateKey.endsWith("'"))
+) {
+  privateKey = privateKey.slice(1, -1);
+}
+
+// Convert escaped newline characters into actual newlines
+privateKey = privateKey
   .replace(/\\n/g, "\n")
-  .replace(/\r/g, "")
+  .replace(/\r\n/g, "\n")
+  .replace(/\r/g, "\n")
   .trim();
 
 // ============================================================
-// VALIDATE PRIVATE KEY FORMAT
+// VALIDATE PRIVATE KEY
 // ============================================================
 
-if (!formattedPrivateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+if (
+  !privateKey.includes("-----BEGIN PRIVATE KEY-----") ||
+  !privateKey.includes("-----END PRIVATE KEY-----")
+) {
   throw new Error(
-    "FIREBASE_PRIVATE_KEY is invalid: BEGIN PRIVATE KEY header is missing."
+    "Invalid Firebase private key. Check the PEM header and footer in Vercel environment variables."
   );
 }
 
-if (!formattedPrivateKey.includes("-----END PRIVATE KEY-----")) {
+// ============================================================
+// VALIDATE PRIVATE KEY CRYPTO FORMAT
+// ============================================================
+
+try {
+  crypto.createPrivateKey(privateKey);
+} catch (error) {
+  console.error("FIREBASE PRIVATE KEY FORMAT ERROR:", error.message);
+
   throw new Error(
-    "FIREBASE_PRIVATE_KEY is invalid: END PRIVATE KEY footer is missing."
+    "Firebase private key is not a valid PEM private key. Check your Firebase service account credentials."
   );
 }
 
@@ -70,17 +93,18 @@ try {
   if (!admin.apps.length) {
     admin.initializeApp({
       credential: admin.credential.cert({
-        projectId: projectId.trim(),
-        clientEmail: clientEmail.trim(),
-        privateKey: formattedPrivateKey
+        projectId,
+        clientEmail,
+        privateKey
       })
     });
-
-    console.log("========================================");
-    console.log("FIREBASE ADMIN INITIALIZED SUCCESSFULLY");
-    console.log("PROJECT:", projectId);
-    console.log("========================================");
   }
+
+  console.log("========================================");
+  console.log("FIREBASE ADMIN INITIALIZED SUCCESSFULLY");
+  console.log("PROJECT:", projectId);
+  console.log("========================================");
+
 } catch (error) {
   console.error("========================================");
   console.error("FIREBASE INITIALIZATION ERROR");
@@ -91,7 +115,7 @@ try {
 }
 
 // ============================================================
-// EXPORT
+// EXPORT FIREBASE ADMIN
 // ============================================================
 
 module.exports = admin;
