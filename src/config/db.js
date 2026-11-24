@@ -1,4 +1,3 @@
-
 "use strict";
 
 const mongoose = require("mongoose");
@@ -6,46 +5,33 @@ const mongoose = require("mongoose");
 let connectionPromise = null;
 
 const connectDB = async () => {
-  // Support both environment variable names
-  const mongoURI =
+  const uri =
     process.env.MONGO_URI ||
     process.env.MONGODB_URI;
 
-  if (!mongoURI) {
-    throw new Error(
-      "MONGO_URI or MONGODB_URI is missing from environment variables"
-    );
+  if (!uri) {
+    throw new Error("MongoDB URI missing");
   }
 
-  // Reuse existing connection
   if (mongoose.connection.readyState === 1) {
     return mongoose;
   }
 
-  // Reuse pending connection
   if (connectionPromise) {
     return connectionPromise;
   }
 
-  connectionPromise = mongoose
-    .connect(mongoURI, {
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000
-    })
-    .then(() => {
-      console.log("MongoDB connected successfully");
-      return mongoose;
-    })
-    .catch((error) => {
-      connectionPromise = null;
-
-      console.error(
-        "MONGODB CONNECTION ERROR:",
-        error.message
-      );
-
-      throw error;
-    });
+  connectionPromise = mongoose.connect(uri, {
+    serverSelectionTimeoutMS: 10000
+  })
+  .then(() => {
+    console.log("MongoDB connected successfully");
+    return mongoose;
+  })
+  .catch(error => {
+    connectionPromise = null;
+    throw error;
+  });
 
   return connectionPromise;
 };
