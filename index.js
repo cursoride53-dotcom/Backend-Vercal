@@ -8,7 +8,7 @@ module.exports = async (req, res) => {
     await connectDB();
     return app(req, res);
   } catch (error) {
-    console.error("BACKEND ERROR:", error.message);
+    console.error("VERCEL ERROR:", error);
 
     return res.status(500).json({
       success: false,

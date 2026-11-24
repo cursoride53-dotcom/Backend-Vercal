@@ -2,12 +2,12 @@
 
 const mongoose = require("mongoose");
 
-let connectionPromise = null;
+let connectionPromise;
 
 const connectDB = async () => {
   const uri =
     process.env.MONGO_URI ||
-    process.env.MONGODB_URI;
+    process.env.MONGO_URI;
 
   if (!uri) {
     throw new Error("MongoDB URI missing");
@@ -17,21 +17,14 @@ const connectDB = async () => {
     return mongoose;
   }
 
-  if (connectionPromise) {
-    return connectionPromise;
+  if (!connectionPromise) {
+    connectionPromise = mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000
+    }).catch(error => {
+      connectionPromise = null;
+      throw error;
+    });
   }
-
-  connectionPromise = mongoose.connect(uri, {
-    serverSelectionTimeoutMS: 10000
-  })
-  .then(() => {
-    console.log("MongoDB connected successfully");
-    return mongoose;
-  })
-  .catch(error => {
-    connectionPromise = null;
-    throw error;
-  });
 
   return connectionPromise;
 };
