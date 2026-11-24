@@ -1,9 +1,18 @@
+
 "use strict";
 
 const mongoose = require("mongoose");
 const Attendance = require("../models/Attendance");
 
-const ALLOWED_REVIEW_STATUSES = ["PENDING", "APPROVED", "REJECTED"];
+const ALLOWED_REVIEW_STATUSES = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+];
+
+// =====================================================
+// 1. PAGINATION HELPER
+// =====================================================
 
 function getPaginationValue(value, fallback, max) {
   const parsed = Number.parseInt(value, 10);
@@ -15,14 +24,11 @@ function getPaginationValue(value, fallback, max) {
   return Math.min(parsed, max);
 }
 
-/**
- * GET /api/attendance/admin/records
- *
- * Query parameters:
- * page, limit, from, to, reviewStatus, search
- *
- * Returns paginated attendance records for the Super Admin.
- */
+// =====================================================
+// 2. ADMIN ATTENDANCE RECORDS
+// GET /api/attendance/admin/records
+// =====================================================
+
 const adminRecords = async (req, res) => {
   try {
     const page = getPaginationValue(req.query.page, 1, 100000);
@@ -30,9 +36,10 @@ const adminRecords = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const { from, to, reviewStatus, search } = req.query;
+
     const filter = {};
 
-    // attendanceDate is stored as YYYY-MM-DD.
+    // Date filtering
     if (from || to) {
       filter.attendanceDate = {};
 
@@ -72,6 +79,7 @@ const adminRecords = async (req, res) => {
       }
     }
 
+    // Review status filtering
     if (reviewStatus) {
       const normalizedStatus = String(reviewStatus)
         .trim()
@@ -88,8 +96,10 @@ const adminRecords = async (req, res) => {
       filter.reviewStatus = normalizedStatus;
     }
 
+    // Employee search
     if (search && String(search).trim()) {
       const searchText = String(search).trim().slice(0, 100);
+
       const escapedSearch = searchText.replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"
@@ -104,12 +114,20 @@ const adminRecords = async (req, res) => {
       ];
     }
 
+    // IMPORTANT:
+    // Explicitly select the selfie fields because the
+    // Attendance schema has select: false for these fields.
+
     const [records, total, pendingCount, approvedCount, rejectedCount] =
       await Promise.all([
         Attendance.find(filter)
-          .select("-checkInSelfiePath -checkOutSelfiePath")
+          .select("+checkInSelfiePath +checkOutSelfiePath")
           .populate("reviewedBy", "name email")
-          .sort({ attendanceDate: -1, checkInAt: -1, createdAt: -1 })
+          .sort({
+            attendanceDate: -1,
+            checkInAt: -1,
+            createdAt: -1,
+          })
           .skip(skip)
           .limit(limit)
           .lean(),
@@ -135,7 +153,9 @@ const adminRecords = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Attendance records fetched successfully.",
+
       data: records,
+
       pagination: {
         page,
         limit,
@@ -144,6 +164,7 @@ const adminRecords = async (req, res) => {
         hasNextPage: page * limit < total,
         hasPreviousPage: page > 1,
       },
+
       summary: {
         total,
         pending: pendingCount,
@@ -161,15 +182,11 @@ const adminRecords = async (req, res) => {
   }
 };
 
-/**
- * PATCH /api/attendance/admin/records/:id/review
- *
- * Request body:
- * {
- *   "status": "APPROVED" | "REJECTED",
- *   "note": "Optional review note"
- * }
- */
+// =====================================================
+// 3. REVIEW ATTENDANCE RECORD
+// PATCH /api/attendance/admin/records/:id/review
+// =====================================================
+
 const reviewRecord = async (req, res) => {
   try {
     const { id } = req.params;
@@ -225,7 +242,7 @@ const reviewRecord = async (req, res) => {
       });
     }
 
-    // The authentication middleware must set req.superAdmin.
+    // Super Admin authentication
     const superAdminId = req.superAdmin?._id;
 
     if (!superAdminId) {
@@ -264,8 +281,9 @@ const reviewRecord = async (req, res) => {
 
     await attendance.save();
 
+    // Include Firebase selfie URLs in the updated response.
     const updatedRecord = await Attendance.findById(attendance._id)
-      .select("-checkInSelfiePath -checkOutSelfiePath")
+      .select("+checkInSelfiePath +checkOutSelfiePath")
       .populate("reviewedBy", "name email")
       .lean();
 
@@ -283,6 +301,10 @@ const reviewRecord = async (req, res) => {
     });
   }
 };
+
+// =====================================================
+// 4. EXPORT CONTROLLERS
+// =====================================================
 
 module.exports = {
   adminRecords,

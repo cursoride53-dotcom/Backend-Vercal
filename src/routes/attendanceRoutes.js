@@ -1,9 +1,11 @@
+
 "use strict";
 
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const crypto = require("crypto");
 
 const attendanceController = require("../controllers/attendanceController");
@@ -14,9 +16,9 @@ const superAdminMiddleware = require("../middleware/superAdminMiddleware");
 
 const router = express.Router();
 
-/* =====================================================
-   1. VALIDATE IMPORTS
-===================================================== */
+// =====================================================
+// 1. VALIDATE IMPORTS
+// =====================================================
 
 function requireHandler(name, handler) {
   if (typeof handler !== "function") {
@@ -30,25 +32,10 @@ function requireHandler(name, handler) {
 requireHandler("attendanceAuth", attendanceAuth);
 requireHandler("superAdminMiddleware", superAdminMiddleware);
 
-requireHandler(
-  "attendanceController.checkIn",
-  attendanceController.checkIn
-);
-
-requireHandler(
-  "attendanceController.checkOut",
-  attendanceController.checkOut
-);
-
-requireHandler(
-  "attendanceController.today",
-  attendanceController.today
-);
-
-requireHandler(
-  "attendanceController.myHistory",
-  attendanceController.myHistory
-);
+requireHandler("attendanceController.checkIn", attendanceController.checkIn);
+requireHandler("attendanceController.checkOut", attendanceController.checkOut);
+requireHandler("attendanceController.today", attendanceController.today);
+requireHandler("attendanceController.myHistory", attendanceController.myHistory);
 
 requireHandler(
   "attendanceAdminController.adminRecords",
@@ -60,30 +47,51 @@ requireHandler(
   attendanceAdminController.reviewRecord
 );
 
-/* =====================================================
-   2. PRIVATE SELFIE UPLOAD CONFIGURATION
-===================================================== */
+// =====================================================
+// 2. SELFIE UPLOAD CONFIGURATION
+// =====================================================
 
-const uploadDirectory = path.resolve(
-  process.env.ATTENDANCE_UPLOAD_DIR ||
-    path.join("uploads", "attendance-selfies")
-);
+// Vercel has a temporary writable directory at /tmp.
+// Local development uses the project's uploads directory.
 
+const uploadDirectory = process.env.VERCEL
+  ? path.join(os.tmpdir(), "attendance-selfies")
+  : path.resolve(
+      process.env.ATTENDANCE_UPLOAD_DIR ||
+      path.join(process.cwd(), "uploads", "attendance-selfies")
+    );
+
+// Create directory if it does not exist.
+try {
+  fs.mkdirSync(uploadDirectory, { recursive: true });
+  console.log("ATTENDANCE UPLOAD DIRECTORY:", uploadDirectory);
+} catch (error) {
+  console.error(
+    "ATTENDANCE UPLOAD DIRECTORY ERROR:",
+    error.message
+  );
+  throw error;
+}
+
+// Maximum selfie size in MB.
 const maxFileSizeMB = Math.max(
   1,
   Number(process.env.ATTENDANCE_MAX_SELFIE_MB) || 5
 );
 
+// Allowed image formats.
 const allowedMimeTypes = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
   "image/webp": ".webp",
 };
 
-fs.mkdirSync(uploadDirectory, { recursive: true });
+// =====================================================
+// 3. MULTER STORAGE
+// =====================================================
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, callback) => {
+  destination: (req, file, callback) => {
     callback(null, uploadDirectory);
   },
 
@@ -100,7 +108,10 @@ const storage = multer.diskStorage({
       ? String(req.employee._id)
       : "employee";
 
-    const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9_-]/g, "");
+    const safeEmployeeId = employeeId.replace(
+      /[^a-zA-Z0-9_-]/g,
+      ""
+    );
 
     const filename =
       `${safeEmployeeId}-${Date.now()}-` +
@@ -110,6 +121,10 @@ const storage = multer.diskStorage({
   },
 });
 
+// =====================================================
+// 4. SELFIE UPLOAD MIDDLEWARE
+// =====================================================
+
 const uploadSelfie = multer({
   storage,
 
@@ -118,7 +133,7 @@ const uploadSelfie = multer({
     files: 1,
   },
 
-  fileFilter: (_req, file, callback) => {
+  fileFilter: (req, file, callback) => {
     if (!allowedMimeTypes[file.mimetype]) {
       return callback(
         new Error("Selfie must be a JPEG, PNG, or WEBP image.")
@@ -129,9 +144,9 @@ const uploadSelfie = multer({
   },
 });
 
-/* =====================================================
-   3. EMPLOYEE ATTENDANCE ROUTES
-===================================================== */
+// =====================================================
+// 5. EMPLOYEE ATTENDANCE ROUTES
+// =====================================================
 
 // POST /api/attendance/check-in
 router.post(
@@ -163,9 +178,9 @@ router.get(
   attendanceController.myHistory
 );
 
-/* =====================================================
-   4. SUPER ADMIN ATTENDANCE ROUTES
-===================================================== */
+// =====================================================
+// 6. SUPER ADMIN ATTENDANCE ROUTES
+// =====================================================
 
 // GET /api/attendance/admin/records?page=1&limit=10
 router.get(
@@ -181,11 +196,11 @@ router.patch(
   attendanceAdminController.reviewRecord
 );
 
-/* =====================================================
-   5. ATTENDANCE ROUTE ERROR HANDLER
-===================================================== */
+// =====================================================
+// 7. ATTENDANCE ROUTE ERROR HANDLER
+// =====================================================
 
-router.use((error, _req, res, next) => {
+router.use((error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
   }
